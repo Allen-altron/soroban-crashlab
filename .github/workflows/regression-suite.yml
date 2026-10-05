@@ -29,7 +29,7 @@ jobs:
           toolchain: 1.97.1
 
       - name: Cache Rust Dependencies
-        uses: Swatinem/rust-cache@6720f05bc48b77f96918929a9019fb2203ff71f8 # v2.0.0
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: contracts
 
