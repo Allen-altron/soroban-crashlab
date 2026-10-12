@@ -41,7 +41,7 @@ jobs:
       - name: Build Web Docker Image
         uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09 # v5.0.0
         with:
-          context: apps/web
+          context: .
           file: apps/web/Dockerfile
           push: false
           cache-from: type=gha
