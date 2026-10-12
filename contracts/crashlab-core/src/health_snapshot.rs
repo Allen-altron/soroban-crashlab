@@ -274,6 +274,39 @@ pub fn read_latest_health_snapshot(
     Ok(None)
 }
 
+/// Reads the newest snapshot line in `run_id`'s log verbatim, or `None` when
+/// there is none.
+///
+/// Same skip rules as [`read_latest_health_snapshot`] — corrupt or unsupported
+/// lines are passed over — but the line itself is returned unmodified instead
+/// of a parsed snapshot. `--json` output must be byte-identical to what the
+/// campaign wrote: re-serializing the parsed snapshot can alter float
+/// rendering (parse/print is not string-stable for all f64 values), which
+/// breaks byte comparisons downstream such as the dashboard tail.
+pub fn read_latest_health_snapshot_line(
+    run_id: RunId,
+    base: impl AsRef<Path>,
+) -> Result<Option<String>, HealthSnapshotError> {
+    let path = health_snapshot_path(run_id, base);
+    let contents = match fs::read_to_string(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err.into()),
+    };
+
+    for line in contents
+        .lines()
+        .rev()
+        .filter(|line| !line.trim().is_empty())
+    {
+        if HealthSnapshot::from_json_line(line).is_ok() {
+            return Ok(Some(line.to_string()));
+        }
+    }
+
+    Ok(None)
+}
+
 /// Best-effort failure class for a drive loop's error message.
 ///
 /// A `drive_run*` `work` callback returns free-form text, so the class is only

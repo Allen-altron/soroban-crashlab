@@ -267,7 +267,7 @@ pub use worker_partition::{
 pub mod health_snapshot;
 pub use health_snapshot::{
     append_health_snapshot, classify_failure_message, health_snapshot_path, read_health_snapshots,
-    read_latest_health_snapshot, terminal_label, BudgetSnapshot, CampaignHealth, HealthSnapshot,
+    read_latest_health_snapshot, read_latest_health_snapshot_line, terminal_label, BudgetSnapshot, CampaignHealth, HealthSnapshot,
     HealthSnapshotError, DEFAULT_SNAPSHOT_INTERVAL_SEEDS, HEALTH_SNAPSHOT_FILE,
     HEALTH_SNAPSHOT_SCHEMA_VERSION, SUPPORTED_HEALTH_SNAPSHOT_SCHEMAS,
 };

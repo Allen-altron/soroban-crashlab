@@ -15,7 +15,7 @@ use crashlab_core::{
     RUN_CHECKPOINT_SCHEMA_VERSION, CampaignPreset, CancelSignal, SeededPrng, WorkerPartition,
     cancel_marker_path, cancel_requested, create_runner, default_state_dir, drive_run,
     drive_run_from_checkpoint, drive_run_partitioned_from_checkpoint, load_run_checkpoint_json,
-    read_latest_health_snapshot, replay_mismatch_message, replay_seed_bundle_path,
+    read_latest_health_snapshot, read_latest_health_snapshot_line, replay_mismatch_message, replay_seed_bundle_path,
     replay_success_message, request_cancel_run, run_regression_suite_from_json,
     save_run_checkpoint_json,
     HealthSnapshot, HealthStatus, RetentionPolicy, RetentionRecord, LocalArtifactStore,
@@ -267,30 +267,32 @@ fn report_run_status(id: u64, as_json: bool) {
     let base = default_state_dir();
     let run_id = RunId(id);
 
+    if as_json {
+        // The raw line, so the web SSE route reads exactly what the
+        // campaign wrote. The line is printed verbatim rather than
+        // re-serialized: float parse/print is not string-stable, so a
+        // re-serialized snapshot can differ from the stored bytes.
+        match read_latest_health_snapshot_line(run_id, &base) {
+            Ok(Some(line)) => println!("{line}"),
+            // A run without snapshots has not started, or ran before
+            // snapshots existed. That is a normal state, not a failure.
+            Ok(None) => println!("null"),
+            Err(e) => {
+                eprintln!("failed to read health snapshot for run {id}: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
     match read_latest_health_snapshot(run_id, &base) {
         Ok(Some(snapshot)) => {
-            if as_json {
-                // The raw line, so the web SSE route reads exactly what the
-                // campaign wrote.
-                match snapshot.to_json_line() {
-                    Ok(line) => print!("{line}"),
-                    Err(e) => {
-                        eprintln!("failed to serialize health snapshot for run {id}: {e}");
-                        std::process::exit(1);
-                    }
-                }
-            } else {
-                print_snapshot_summary(&snapshot);
-            }
+            print_snapshot_summary(&snapshot);
         }
         // A run without snapshots has not started, or ran before snapshots
         // existed. That is a normal state, not a failure.
         Ok(None) => {
-            if as_json {
-                println!("null");
-            } else {
-                println!("no health snapshot for run {id}");
-            }
+            println!("no health snapshot for run {id}");
         }
         Err(e) => {
             eprintln!("failed to read health snapshot for run {id}: {e}");
