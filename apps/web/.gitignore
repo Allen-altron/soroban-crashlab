@@ -55,6 +55,10 @@ next-env.d.ts
 
 # lighthouse ci
 /.lighthouseci/
+
+# stryker mutation testing
+/reports/
+/.stryker-tmp/
 /.lighthouseci-desktop/
 /.lighthouseci-mobile/
 
