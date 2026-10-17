@@ -9,6 +9,7 @@ pub mod regression_group;
 pub mod reproducer;
 pub mod retry;
 pub mod runner;
+pub mod shrink;
 pub mod signature_hash;
 pub mod suite_runner;
 pub mod taxonomy;
