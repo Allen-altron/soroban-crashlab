@@ -16,7 +16,7 @@ use crashlab_core::{
     RUN_CHECKPOINT_SCHEMA_VERSION, CampaignPreset, CancelSignal, SeededPrng, WorkerPartition,
     cancel_marker_path, cancel_requested, create_runner, default_state_dir, drive_run,
     drive_run_from_checkpoint, drive_run_partitioned_from_checkpoint, load_run_checkpoint_json,
-    read_latest_health_snapshot, read_latest_health_snapshot_line, replay_mismatch_message, replay_seed_bundle_path,
+    read_health_snapshot_log, read_latest_health_snapshot_line, replay_mismatch_message, replay_seed_bundle_path,
     replay_success_message, request_cancel_run, run_regression_suite_from_json,
     save_run_checkpoint_json,
     HealthSnapshot, HealthStatus, RetentionPolicy, RetentionRecord, LocalArtifactStore,
@@ -496,11 +496,33 @@ fn report_run_status(id: u64, as_json: bool) {
         // campaign wrote. The line is printed verbatim rather than
         // re-serialized: float parse/print is not string-stable, so a
         // re-serialized snapshot can differ from the stored bytes.
-        match read_latest_health_snapshot_line(run_id, &base) {
-            Ok(Some(line)) => println!("{line}"),
-            // A run without snapshots has not started, or ran before
-            // snapshots existed. That is a normal state, not a failure.
-            Ok(None) => println!("null"),
+        match read_health_snapshot_log(run_id, &base) {
+            Ok(log) => {
+                let latest = log.snapshots.last();
+                if !log.degraded {
+                    match read_latest_health_snapshot_line(run_id, &base) {
+                        Ok(Some(line)) => println!("{line}"),
+                        Ok(None) => println!("null"),
+                        Err(e) => {
+                            eprintln!("failed to read health snapshot for run {id}: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                } else {
+                    let mut value = latest
+                        .and_then(|snapshot| serde_json::to_value(snapshot).ok())
+                        .unwrap_or(serde_json::Value::Null);
+                    if let Some(object) = value.as_object_mut() {
+                        object.insert("degraded".into(), serde_json::Value::Bool(true));
+                        object.insert("truncated_tail".into(), serde_json::Value::Bool(log.truncated_tail));
+                        object.insert("corrupt_lines".into(), serde_json::json!(log.corrupt_lines));
+                    } else {
+                        value = serde_json::json!({"snapshot": null, "degraded": true,
+                            "truncated_tail": log.truncated_tail, "corrupt_lines": log.corrupt_lines});
+                    }
+                    println!("{value}");
+                }
+            }
             Err(e) => {
                 eprintln!("failed to read health snapshot for run {id}: {e}");
                 std::process::exit(1);
@@ -509,18 +531,23 @@ fn report_run_status(id: u64, as_json: bool) {
         return;
     }
 
-    match read_latest_health_snapshot(run_id, &base) {
-        Ok(Some(snapshot)) => {
-            print_snapshot_summary(&snapshot);
-        }
-        // A run without snapshots has not started, or ran before snapshots
-        // existed. That is a normal state, not a failure.
-        Ok(None) => {
-            println!("no health snapshot for run {id}");
-        }
+    let log = match read_health_snapshot_log(run_id, &base) {
+        Ok(log) => log,
         Err(e) => {
             eprintln!("failed to read health snapshot for run {id}: {e}");
             std::process::exit(1);
+        }
+    };
+    if log.degraded {
+        eprintln!("warning: health snapshot log is degraded ({} corrupt line(s), truncated tail: {})",
+            log.corrupt_lines, log.truncated_tail);
+    }
+    match log.snapshots.last() {
+        Some(snapshot) => print_snapshot_summary(snapshot),
+        // A run without snapshots has not started, or ran before snapshots
+        // existed. That is a normal state, not a failure.
+        None => {
+            println!("no health snapshot for run {id}");
         }
     }
 }
