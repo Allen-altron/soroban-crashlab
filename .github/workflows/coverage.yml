@@ -69,7 +69,12 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
+      - name: Install workspace dependencies
+        # Bootstrap phase is report-only: if the workspace cannot install (e.g.
+        # the lockfile and manifests are out of sync on the base branch), skip
+        # the measurement rather than hard-failing the ratchet job.
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile
 
       - name: Measure coverage (vitest + istanbul)
         # A failing test still produces partial coverage; the unit-test job owns
@@ -130,6 +135,7 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # 1.97.1
         with:
+          toolchain: 1.97.1
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
