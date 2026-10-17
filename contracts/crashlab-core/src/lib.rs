@@ -117,7 +117,9 @@ pub mod havoc;
 pub use havoc::{apply_havoc_mutation, derive_seed_state, HavocConfig, HavocMutator, HavocOp};
 
 pub mod scheduler;
-pub use scheduler::{Mutator, MutatorRegistry, SchedulerError, WeightedScheduler};
+pub use scheduler::{
+    Mutator, MutatorRegistry, MutatorStats, SchedulerError, SchedulerStatEntry, WeightedScheduler,
+};
 
 pub mod campaign_presets;
 pub use campaign_presets::{
