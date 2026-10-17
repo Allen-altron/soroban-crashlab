@@ -20,6 +20,10 @@
 /playwright/.cache/
 /e2e/.temp-test-files/
 
+# playwright visual gate (separate config/reporters)
+/test-results-visual/
+/playwright-report-visual/
+
 # next.js
 /.next/
 /out/
