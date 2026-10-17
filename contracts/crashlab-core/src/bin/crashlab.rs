@@ -222,6 +222,13 @@ fn main() {
             }
             corpus_verify_command(path);
         }
+        (Some("shrink"), Some(path), Some(out_path), None) => {
+            if !rest.is_empty() {
+                print_usage();
+                std::process::exit(1);
+            }
+            shrink_command(path, out_path);
+        }
         _ => {
             print_usage();
             std::process::exit(1);
@@ -238,6 +245,7 @@ fn print_usage() {
                 crashlab replay seed <bundle-json-path>\n\
                 crashlab regression-suite <suite-json-path-or-directory> [--report <report.json>]\n\
                 crashlab corpus verify <corpus-json-path>\n\
+                crashlab shrink <bundle-json-path> <out-bundle-json-path>\n\
                 crashlab fixture verify <manifest-or-bundle-json> [--policy <require|warn|off>]\n\
                 crashlab fixture show <manifest-or-bundle-json> [--json]\n\
                 crashlab retention sweep [--dry-run] [--heartbeat-ttl <secs>] [--grace-period <secs>]\n\
@@ -450,6 +458,95 @@ fn corpus_verify_command(path: &str) {
             std::process::exit(1);
         }
     }
+}
+
+/// Iteration cap for `crashlab shrink`; each iteration is one replay check.
+const SHRINK_MAX_ITERATIONS: u32 = 10_000;
+
+/// `crashlab shrink <bundle> <out>` (#1849): ddmin the bundle seed payload while
+/// preserving its full signature under the replay check (`classify` plus
+/// `signatures_match`). The shrunk bundle keeps the original seed and a
+/// [`ShrinkLineage`] in its `original_seed` / `shrink_lineage` fields.
+fn shrink_command(path: &str, out_path: &str) {
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("failed to read {path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let doc = match load_case_bundle_document_json(&bytes) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{path} is not a case bundle: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let original = doc.original_or_minimal_seed().clone();
+    let expected = doc.signature.clone();
+    let seed_id = original.id;
+
+    let outcome = crashlab_core::shrink::shrink_payload(
+        &original.payload,
+        crashlab_core::shrink::ShrinkBudget::new(SHRINK_MAX_ITERATIONS),
+        |candidate: &[u8]| {
+            let probe = CaseSeed {
+                id: seed_id,
+                payload: candidate.to_vec(),
+            };
+            crashlab_core::shrink::preserve_check(
+                crashlab_core::shrink::PreserveMode::FullSignature,
+                &expected,
+                &crashlab_core::classify(&probe),
+            )
+        },
+    );
+
+    if outcome.budget_exhausted {
+        eprintln!(
+            "warning: shrink budget ({SHRINK_MAX_ITERATIONS} iterations) exhausted; result may not be minimal"
+        );
+    }
+
+    let lineage = crashlab_core::ShrinkLineage::new(
+        "ddmin-payload",
+        outcome.iterations,
+        original.payload.len(),
+        outcome.payload.len(),
+        1,
+        1,
+    )
+    .with_preserved_field("signature");
+
+    let minimal = CaseSeed {
+        id: seed_id,
+        payload: outcome.payload.clone(),
+    };
+    let mut shrunk = doc.clone();
+    shrunk.seed = minimal;
+    shrunk.provenance = None;
+    let shrunk = shrunk.with_pairing(original.clone(), lineage);
+
+    let rendered = match crashlab_core::save_case_bundle_document_json(&shrunk) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("failed to render shrunk bundle: {e}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(e) = fs::write(out_path, &rendered) {
+        eprintln!("failed to write {out_path}: {e}");
+        std::process::exit(1);
+    }
+
+    println!(
+        "shrunk {} -> {} bytes in {} iterations ({})",
+        original.payload.len(),
+        outcome.payload.len(),
+        outcome.iterations,
+        out_path
+    );
 }
 
 fn list_runs() {
