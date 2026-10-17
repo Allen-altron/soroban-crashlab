@@ -243,6 +243,9 @@ pub use regression_suite::{
     RegressionCaseResult, RegressionSuiteSummary, REGRESSION_REPORT_SCHEMA_VERSION,
 };
 
+pub mod rust_repro;
+pub use rust_repro::{render_rust_test, ReproExportError};
+
 pub mod regression_grouping;
 pub use regression_grouping::{
     export_rust_regression_suite, group_bundles_by_regression_group, regression_group_key,

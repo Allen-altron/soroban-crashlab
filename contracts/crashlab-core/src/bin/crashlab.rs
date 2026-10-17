@@ -48,6 +48,14 @@ fn main() {
         return;
     }
 
+    // `bundle export-rust` takes flags (`-o`, `--force`), so like `run start` it
+    // is dispatched before positional arity is resolved.
+    if a.as_deref() == Some("bundle") && b.as_deref() == Some("export-rust") {
+        let rest: Vec<String> = args.collect();
+        bundle_export_rust_command(&rest);
+        return;
+    }
+
     let c = args.next();
     let d = args.next();
 
@@ -236,6 +244,7 @@ fn print_usage() {
                 crashlab runs list\n\
                 crashlab runs status <id> [--json]\n\
                 crashlab replay seed <bundle-json-path>\n\
+                crashlab bundle export-rust <bundle-json-path> -o <file.rs> [--force]\n\
                 crashlab regression-suite <suite-json-path-or-directory> [--report <report.json>]\n\
                 crashlab corpus verify <corpus-json-path>\n\
                 crashlab fixture verify <manifest-or-bundle-json> [--policy <require|warn|off>]\n\
@@ -407,6 +416,92 @@ fn fixture_show_command(path: &str, json: bool, rest: &[String]) {
                 }
                 None => println!("original-only document (no shrink lineage)"),
             }
+        }
+    }
+}
+
+/// `crashlab bundle export-rust <bundle.json> -o <file.rs> [--force]` (#1862).
+///
+/// Writes a cargo-test source file that replays the bundle. Refuses to replace
+/// an existing file unless `--force` is given.
+fn bundle_export_rust_command(args: &[String]) {
+    let mut bundle_path: Option<&str> = None;
+    let mut out_path: Option<&str> = None;
+    let mut force = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" => {
+                i += 1;
+                match args.get(i) {
+                    Some(v) => out_path = Some(v.as_str()),
+                    None => {
+                        eprintln!("missing value for -o");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "--force" => force = true,
+            other if !other.starts_with('-') && bundle_path.is_none() => {
+                bundle_path = Some(other);
+            }
+            _ => {
+                print_usage();
+                std::process::exit(1);
+            }
+        }
+        i += 1;
+    }
+
+    let (Some(bundle_path), Some(out_path)) = (bundle_path, out_path) else {
+        print_usage();
+        std::process::exit(1);
+    };
+
+    let bytes = match fs::read(bundle_path) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("failed to read {bundle_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let bundle = match crashlab_core::load_case_bundle_json(&bytes) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("failed to parse bundle {bundle_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let source = match crashlab_core::render_rust_test(&bundle) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("failed to render reproducer: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let written: std::io::Result<()> = if force {
+        fs::write(out_path, source.as_bytes())
+    } else {
+        use std::io::Write as _;
+        // `create_new` makes the no-overwrite check atomic with the write.
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(out_path)
+            .and_then(|mut f| f.write_all(source.as_bytes()))
+    };
+
+    match written {
+        Ok(()) => println!("wrote reproducer to {out_path}"),
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            eprintln!("refusing to overwrite {out_path} (pass --force to replace it)");
+            std::process::exit(1);
+        }
+        Err(e) => {
+            eprintln!("failed to write {out_path}: {e}");
+            std::process::exit(1);
         }
     }
 }
