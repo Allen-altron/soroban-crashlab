@@ -199,6 +199,11 @@ pub use signature_comparison::{
     SignatureInfo, SignatureSnapshot,
 };
 
+pub mod baseline;
+pub use baseline::{
+    Baseline, BaselineEntry, BaselineError, Classification, EntryStatus, ObservedSignature,
+};
+
 pub mod fixture_sanitize;
 pub use fixture_sanitize::{
     export_sanitized_scenario_json, export_sanitized_suite_json, sanitize_and_validate_bundle,

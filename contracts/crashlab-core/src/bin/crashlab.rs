@@ -54,6 +54,13 @@ fn main() {
     // Trailing arguments for the positional subcommands, which take none.
     let rest: Vec<String> = args.collect();
 
+    // `regression baseline <set|compare> <observed.json> <baseline.json>` needs
+    // five positionals, so it is dispatched before the four-slot match below.
+    if a.as_deref() == Some("regression") && b.as_deref() == Some("baseline") {
+        regression_baseline_command(c.as_deref(), d.as_deref(), &rest);
+        return;
+    }
+
     match (a.as_deref(), b.as_deref(), c.as_deref(), d.as_deref()) {
         (Some("run"), Some("cancel"), Some(id_str), None) => {
             if !rest.is_empty() {
@@ -237,6 +244,8 @@ fn print_usage() {
                 crashlab runs status <id> [--json]\n\
                 crashlab replay seed <bundle-json-path>\n\
                 crashlab regression-suite <suite-json-path-or-directory> [--report <report.json>]\n\
+                crashlab regression baseline set <observed-suite.json> <baseline.json>\n\
+                crashlab regression baseline compare <observed-suite.json> <baseline.json>\n\
                 crashlab corpus verify <corpus-json-path>\n\
                 crashlab fixture verify <manifest-or-bundle-json> [--policy <require|warn|off>]\n\
                 crashlab fixture show <manifest-or-bundle-json> [--json]\n\
@@ -582,6 +591,105 @@ fn health_status_label(status: &HealthStatus) -> &'static str {
         HealthStatus::Degraded => "degraded",
         HealthStatus::Unhealthy => "unhealthy",
     }
+}
+
+fn regression_baseline_command(action: Option<&str>, observed_path: Option<&str>, rest: &[String]) {
+    use crashlab_core::baseline::{
+        classify as classify_baseline, exit_code, observe_scenarios, BASELINE_SCHEMA_VERSION,
+    };
+    use crashlab_core::{Baseline, Classification};
+
+    let (action, observed_path) = match (action, observed_path, rest.len()) {
+        (Some(action @ ("set" | "compare")), Some(observed), 1) => (action, observed),
+        _ => {
+            print_usage();
+            std::process::exit(1);
+        }
+    };
+    let baseline_path = Path::new(&rest[0]);
+
+    let scenario_bytes = match fs::read(observed_path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            eprintln!("failed to read {observed_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let scenarios = match crashlab_core::load_regression_suite_json(&scenario_bytes) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("failed to parse observed suite {observed_path}: {e}");
+            std::process::exit(1);
+        }
+    };
+    let observed = match observe_scenarios(&scenarios) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+    };
+
+    if action == "set" {
+        let label = format!("baseline-v{BASELINE_SCHEMA_VERSION}");
+        let baseline = Baseline::from_observed(&observed, &label);
+        let json = match baseline.to_json() {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("failed to serialize baseline: {e}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = fs::write(baseline_path, json) {
+            eprintln!("failed to write baseline {}: {e}", baseline_path.display());
+            std::process::exit(1);
+        }
+        println!(
+            "wrote baseline {} ({} entries)",
+            baseline_path.display(),
+            baseline.entries.len()
+        );
+        return;
+    }
+
+    // compare: any load or integrity failure maps to exit code 2.
+    let loaded: Option<Baseline> = match fs::read_to_string(baseline_path) {
+        Ok(text) => match Baseline::from_json(&text) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                eprintln!("baseline rejected: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("failed to read baseline {}: {e}", baseline_path.display());
+            None
+        }
+    };
+
+    let (classification, baseline_ok) = match &loaded {
+        Some(b) => (classify_baseline(b, &observed), true),
+        None => (Classification::default(), false),
+    };
+
+    if baseline_ok {
+        println!("::group::Baseline classification");
+        println!("new: {}", classification.new.len());
+        for o in &classification.new {
+            println!("  + {} {}", o.signature_hash, o.category);
+        }
+        println!("recurring: {}", classification.recurring.len());
+        for o in &classification.recurring {
+            println!("  = {} {}", o.signature_hash, o.category);
+        }
+        println!("fixed: {}", classification.fixed.len());
+        for e in &classification.fixed {
+            println!("  - {} {}", e.signature_hash, e.category);
+        }
+        println!("::endgroup::");
+    }
+
+    std::process::exit(exit_code(&classification, baseline_ok));
 }
 
 fn run_regression_suite_command(path: &str, report_path: Option<&Path>) {
