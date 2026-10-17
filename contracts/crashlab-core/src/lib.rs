@@ -314,6 +314,8 @@ pub mod rpc_envelope;
 pub use rpc_envelope::{RpcEnvelopeCapture, RpcRequestEnvelope, RpcResponseEnvelope};
 
 pub mod stellar_address;
+pub mod address_neighbors;
+pub use address_neighbors::{generate_address_neighbors, AddressNeighbor, AddressNeighborStrategy};
 
 // Re-enable threat model tests (compile-only pass). Obsolete cases can be
 // ignored or updated as follow-ups (see ROADMAP-004).
