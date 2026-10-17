@@ -1,0 +1,27 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "feat/issue-1847-type-directed-scval-xdr-mutator-instead-of-byte",
+    "feat/issue-1848-coverage-guided-corpus-energy-map-host-outcomes",
+    "feat/issue-1856-cost-aware-campaign-budgeting-with-plateau",
+    "fix/issue-1839-lease-based-retention-redesign-with-per",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "feat/issue-1847-type-directed-scval-xdr-mutator-instead-of-byte": "main",
+    "feat/issue-1848-coverage-guided-corpus-energy-map-host-outcomes": "main",
+    "feat/issue-1856-cost-aware-campaign-budgeting-with-plateau": "main",
+    "fix/issue-1839-lease-based-retention-redesign-with-per": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "feat/issue-1847-type-directed-scval-xdr-mutator-instead-of-byte",
+    "feat/issue-1848-coverage-guided-corpus-energy-map-host-outcomes",
+    "feat/issue-1856-cost-aware-campaign-budgeting-with-plateau",
+    "fix/issue-1839-lease-based-retention-redesign-with-per",
+    "origin"
+  ]
+}
