@@ -1,4 +1,5 @@
 pub mod auth_matrix;
+pub mod cluster;
 pub mod cors;
 pub mod fixture;
 pub mod fixture_classifier;
@@ -244,8 +245,15 @@ pub use regression_suite::{
 
 pub mod regression_grouping;
 pub use regression_grouping::{
-    export_rust_regression_suite, group_bundles_by_regression_group, regression_group_key,
+    export_rust_regression_suite, group_bundles_by_normalized_signature,
+    group_bundles_by_regression_group, normalized_cluster_key, regression_group_key,
     regression_group_keys_sorted, regression_group_module_ident, RegressionGroupKey,
+};
+
+pub use cluster::{
+    cluster_observations, normalize_signature, ClusterKey, ClusterMember, ClusterSnapshot,
+    ClusterStore, FailureCluster, FailureObservation, NormalizationRules, NormalizedSignature,
+    DEFAULT_AMOUNT_MIN_DIGITS, NORMALIZATION_RULES_VERSION,
 };
 
 pub mod simulation;
